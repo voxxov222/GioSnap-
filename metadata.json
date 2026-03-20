@@ -1,0 +1,9 @@
+{
+  "name": "GeoMint Social",
+  "description": "A 3D globe social network to mint location-based NFTs, chat, and explore the world with AI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

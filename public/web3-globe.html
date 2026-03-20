@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web3 3D Globe Social Platform</title>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bg-glass: rgba(15, 23, 42, 0.75);
+      --border-glass: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #000;
+      color: var(--text-main);
+    }
+
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* UI Overlay Controls */
+    #ui-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none; /* Let clicks pass through to globe */
+    }
+
+    .glass-panel {
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      pointer-events: auto;
+    }
+
+    /* Top Controls */
+    #controls {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    /* Custom HTML Markers */
+    .pin-container {
+      position: relative;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: transform 0.2s ease;
+    }
+
+    .pin-container:hover {
+      transform: scale(1.2);
+      z-index: 100;
+    }
+
+    .pin-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      object-fit: cover;
+    }
+
+    .pin-pulse {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      background: var(--primary);
+      border-radius: 50%;
+      z-index: -1;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+      100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+    }
+
+    /* Hover Tooltip */
+    #tooltip {
+      position: absolute;
+      display: none;
+      padding: 12px;
+      pointer-events: none;
+      transform: translate(-50%, -120%);
+      min-width: 150px;
+      text-align: center;
+    }
+
+    #tooltip img {
+      width: 100%;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    #tooltip h4 { margin: 0 0 4px 0; font-size: 14px; }
+    #tooltip p { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+    /* Gallery Modal */
+    #gallery-modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      display: none;
+      flex-direction: column;
+      opacity: 0;
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+
+    #gallery-modal.active {
+      display: flex;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .modal-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-glass);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h2 { margin: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 12px; }
+    .modal-header img { width: 40px; height: 40px; border-radius: 50%; }
+    
+    .close-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .close-btn:hover { color: white; }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .gallery-item {
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-glass);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .gallery-footer {
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .nft-badge {
+      font-family: monospace;
+      background: rgba(99, 102, 241, 0.2);
+      color: #818cf8;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* Toast Notification */
+    #toast {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      padding: 12px 24px;
+      border-radius: 30px;
+      background: #10b981;
+      color: white;
+      font-weight: 600;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none;
+    }
+
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+  <!-- 3D Globe Container -->
+  <div id="globeViz"></div>
+
+  <!-- UI Overlay -->
+  <div id="ui-layer">
+    
+    <!-- Controls -->
+    <div id="controls" class="glass-panel">
+      <h3 style="margin: 0 0 8px 0; font-size: 16px;">🌍 Web3 GeoSocial</h3>
+      <button id="btn-location" class="btn">📍 My Location</button>
+      <button id="btn-add-pin" class="btn" style="background: #10b981;">📸 Drop NFT Pin</button>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div id="tooltip" class="glass-panel">
+      <img id="tt-img" src="" alt="Preview">
+      <h4 id="tt-user">Username</h4>
+      <p id="tt-loc">Location</p>
+    </div>
+
+    <!-- Gallery Modal -->
+    <div id="gallery-modal" class="glass-panel">
+      <div class="modal-header">
+        <h2><img id="modal-avatar" src="" alt=""> <span id="modal-user">User</span>'s Gallery</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        <!-- Gallery items injected here -->
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast">✅ NFT Minted Successfully!</div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://unpkg.com/three"></script>
+  <script src="https://unpkg.com/globe.gl"></script>
+  <!-- Mock Thirdweb SDK for demonstration -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+
+  <script>
+    // --- 1. MOCK DATA (Simulating Backend/Blockchain State) ---
+    let pinsData = [
+      { id: '1', lat: 40.7128, lng: -74.0060, user: 'Alice_NYC', avatar: 'https://i.pravatar.cc/150?u=1', locationName: 'New York, USA', images: ['https://picsum.photos/seed/nyc1/600/400', 'https://picsum.photos/seed/nyc2/600/400'] },
+      { id: '2', lat: 35.6762, lng: 139.6503, user: 'TokyoDrifter', avatar: 'https://i.pravatar.cc/150?u=2', locationName: 'Tokyo, Japan', images: ['https://picsum.photos/seed/tokyo/600/400'] },
+      { id: '3', lat: 51.5074, lng: -0.1278, user: 'LondonEye', avatar: 'https://i.pravatar.cc/150?u=3', locationName: 'London, UK', images: ['https://picsum.photos/seed/london/600/400'] },
+      { id: '4', lat: -33.8688, lng: 151.2093, user: 'AussieMate', avatar: 'https://i.pravatar.cc/150?u=4', locationName: 'Sydney, Australia', images: ['https://picsum.photos/seed/sydney/600/400'] }
+    ];
+
+    // --- 2. GLOBE INITIALIZATION ---
+    const globe = Globe()(document.getElementById('globeViz'))
+      .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+      .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+      .pointOfView({ lat: 20, lng: 0, altitude: 2.5, animateDuration: 2000 });
+
+    // --- 3. SMOOTH CONTROLS & ZOOM ---
+    const controls = globe.controls();
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.zoomSpeed = 0.8;
+    controls.minDistance = 120; // Street level zoom limit
+    controls.maxDistance = 500; // Outer space limit
+
+    // Render loop for damping
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      
+      // Dynamic scaling of markers based on altitude (Clustering simulation)
+      const altitude = globe.pointOfView().altitude;
+      const scale = Math.max(0.3, Math.min(1, altitude / 2));
+      document.querySelectorAll('.pin-container').forEach(el => {
+        el.style.transform = `scale(${scale})`;
+      });
+    })();
+
+    // --- 4. HTML MARKERS (PINS) ---
+    function renderPins() {
+      globe.htmlElementsData(pinsData)
+        .htmlElement(d => {
+          const el = document.createElement('div');
+          el.className = 'pin-container';
+          el.innerHTML = `
+            <div class="pin-pulse"></div>
+            <img class="pin-avatar" src="${d.avatar}" alt="${d.user}">
+          `;
+          
+          // Interactivity
+          el.onclick = () => openGallery(d);
+          
+          el.onmouseenter = (e) => {
+            const tooltip = document.getElementById('tooltip');
+            document.getElementById('tt-img').src = d.images[0];
+            document.getElementById('tt-user').innerText = d.user;
+            document.getElementById('tt-loc').innerText = d.locationName;
+            tooltip.style.display = 'block';
+            
+            // Position tooltip
+            const rect = el.getBoundingClientRect();
+            tooltip.style.left = rect.left + (rect.width/2) + 'px';
+            tooltip.style.top = rect.top - 10 + 'px';
+          };
+          
+          el.onmouseleave = () => {
+            document.getElementById('tooltip').style.display = 'none';
+          };
+          
+          return el;
+        });
+    }
+    renderPins();
+
+    // --- 5. DOUBLE CLICK TO ZOOM ---
+    const renderer = globe.renderer();
+    const camera = globe.camera();
+    
+    renderer.domElement.addEventListener('dblclick', (event) => {
+      const mouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      
+      // Intersect with globe mesh
+      const intersects = raycaster.intersectObject(globe.scene().children.find(c => c.type === 'Mesh'));
+      
+      if (intersects.length > 0) {
+        // Convert 3D point to Lat/Lng
+        const { lat, lng } = globe.toGeoCoords(intersects[0].point);
+        // Zoom in close (street level)
+        globe.pointOfView({ lat, lng, altitude: 0.2, animateDuration: 1500 });
+      }
+    });
+
+    // --- 6. MY LOCATION BUTTON ---
+    document.getElementById('btn-location').addEventListener('click', () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          globe.pointOfView({ lat, lng, altitude: 0.5, animateDuration: 2000 });
+        }, () => alert('Location access denied.'));
+      }
+    });
+
+    // --- 7. DYNAMIC UPDATES (Simulating live network) ---
+    document.getElementById('btn-add-pin').addEventListener('click', () => {
+      // Simulate user taking a photo at current view center
+      const center = globe.pointOfView();
+      const newPin = {
+        id: Date.now().toString(),
+        lat: center.lat,
+        lng: center.lng,
+        user: 'You_Web3',
+        avatar: 'https://i.pravatar.cc/150?u=you',
+        locationName: 'Newly Minted Location',
+        images: [`https://picsum.photos/seed/${Date.now()}/600/400`]
+      };
+      
+      pinsData.push(newPin);
+      renderPins();
+      
+      // Zoom to new pin
+      globe.pointOfView({ lat: center.lat, lng: center.lng, altitude: 0.3, animateDuration: 1000 });
+      showToast('📍 New Location Pinned!');
+    });
+
+    // --- 8. GALLERY & NFT MINTING (Thirdweb Mock) ---
+    function openGallery(data) {
+      const modal = document.getElementById('gallery-modal');
+      const content = document.getElementById('modal-content');
+      
+      document.getElementById('modal-avatar').src = data.avatar;
+      document.getElementById('modal-user').innerText = data.user;
+      
+      content.innerHTML = data.images.map((img, i) => `
+        <div class="gallery-item">
+          <img src="${img}" alt="Location Photo">
+          <div class="gallery-footer">
+            <div>
+              <div style="font-weight: 600; margin-bottom: 4px;">Photo #${i+1}</div>
+              <div class="nft-badge">Not Minted Yet</div>
+            </div>
+            <button class="btn" onclick="mintNFT(this, '${img}')">
+              💎 Mint NFT
+            </button>
+          </div>
+        </div>
+      `).join('');
+      
+      modal.classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('gallery-modal').classList.remove('active');
+    }
+
+    // Mock Web3 Minting Function
+    async function mintNFT(buttonEl, imageUrl) {
+      const originalText = buttonEl.innerHTML;
+      buttonEl.innerHTML = '⏳ Minting...';
+      buttonEl.disabled = true;
+      buttonEl.style.opacity = '0.7';
+
+      try {
+        // Simulate Web3 Transaction Delay (e.g., Metamask confirmation + block mining)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Success State
+        buttonEl.innerHTML = '✅ Minted';
+        buttonEl.style.background = '#10b981';
+        
+        // Update Badge
+        const badge = buttonEl.parentElement.querySelector('.nft-badge');
+        const mockTokenId = Math.floor(Math.random() * 10000);
+        badge.innerText = `Token ID: #${mockTokenId}`;
+        badge.style.background = 'rgba(16, 185, 129, 0.2)';
+        badge.style.color = '#34d399';
+
+        showToast('💎 NFT Successfully Minted on Polygon!');
+      } catch (err) {
+        buttonEl.innerHTML = originalText;
+        buttonEl.disabled = false;
+        alert('Minting failed. Please try again.');
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      globe.width(window.innerWidth).height(window.innerHeight);
+    });
+  </script>
+</body>
+</html>
